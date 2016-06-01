@@ -14,7 +14,6 @@ sourceSets.test.resources.srcDirs "src/resources"
 sourceSets.test.java.srcDirs "src/test/java"
 
 
-
 repositories {
     mavenCentral()
 }
@@ -79,32 +78,28 @@ task packageScalaDocs(type: Jar, dependsOn: scaladoc) {
     from scaladoc
 }
 
+artifacts {
+    archives packageTests
+}
 if (rootProject.hasProperty('enablePublish')) {
     artifacts {
         archives packageScalaDocs, packageSources
     }
 }
 
-
-
 archivesBaseName = 'gemfirexd-scala-tests'
-
 
 testClasses.doLast {
     copyTestsCommonResources(buildDir)
-}
-
-copy {
-        def osDir = osName.getFamilyName().replace(" ", "").toLowerCase()
-        from (rootDir.getAbsolutePath() + '/dtests/src/test/java') {
-            include '**/*.bt'
-            include '**/*.conf'
-            include '**/*.inc'
-            include '**/*.sql'
+    if (new File(rootDir, "store/build.gradle").exists()) {
+        copy {
+            from (sourceSets.test.java.srcDirs) {
+                include '**/*.bt'
+                include '**/*.conf'
+                include '**/*.inc'
+                include '**/*.sql'
+            }
+            into project(':snappy-store:gemfirexd-tests').sourceSets.main.output.classesDir
         }
-        into rootDir.getAbsolutePath() + '/store/tests/sql/build-artifacts/' + osDir + '/classes/main'
+    }
 }
-
-
-
-

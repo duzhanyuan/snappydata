@@ -170,6 +170,75 @@ Create row tables using API, update the contents of row table
 ```
 
 
+### SnappyStreamingContext
+SnappyData extends Spark streaming so stream definitions can be declaratively written using SQL and these streams can be analyzed using static and dynamic SQL.
+
+Below example shows how to use the SnappyStreamingContext to apply a schema to existing DStream and then query the SchemaDStream with simple SQL. It also shows the SnappyStreamingContext ability to deal with sql queries.
+
+###### Scala
+```scala
+import org.apache.spark.sql._
+import org.apache.spark.streaming._
+import scala.collection.mutable
+import org.apache.spark.rdd._
+import org.apache.spark.sql.types._
+import scala.collection.immutable.Map
+
+  val snsc = new SnappyStreamingContext(sc, Duration(1))
+  val schema = StructType(List(StructField("id", IntegerType) ,StructField("text", StringType)))
+
+  case class ShowCaseSchemaStream (loc:Int, text:String)
+
+  snsc.snappyContext.dropTable("streamingExample", ifExists = true)
+  snsc.snappyContext.createTable("streamingExample", "column",  schema, Map.empty[String, String] , false)
+
+  def rddList(start:Int, end:Int) = sc.parallelize(start to end).map(i => ShowCaseSchemaStream( i, s"Text$i"))
+
+  val dstream = snsc.queueStream[ShowCaseSchemaStream](
+                mutable.Queue(rddList(1, 10), rddList(10, 20), rddList(20, 30)))
+
+  val schemaDStream = snsc.createSchemaDStream(dstream )
+
+  schemaDStream.foreachDataFrame(df => { 
+      df.write.format("column").
+      mode(SaveMode.Append).
+      options(Map.empty[String, String]).
+      saveAsTable("streamingExample")    })
+  
+  snsc.start()   
+  snsc.sql("select count(*) from streamingExample").show
+```
+
+###### Python
+```python
+from pyspark.streaming.snappy.context import SnappyStreamingContext
+from pyspark.sql.types import *
+
+def  rddList(start, end): 
+  return sc.parallelize(range(start,  end)).map(lambda i : ( i, "Text" + str(i)))
+
+def saveFunction(df):
+   df.write.format("column").mode("append").saveAsTable("streamingExample")
+  
+schema=StructType([StructField("loc", IntegerType()), 
+                   StructField("text", StringType())])
+
+snsc = SnappyStreamingContext(sc, 1)
+
+snsc.queueStream([rddList(1,10) , rddList(10,20), rddList(20,30)])
+
+snsc._snappycontext.dropTable("streamingExample" , True)
+snsc._snappycontext.createTable("streamingExample", "column", schema)
+
+dstream = snsc.queueStream(getQueueOfRDDs())
+schemadstream = snsc.createSchemaDStream(dstream, schema)
+schemadstream.foreachDataFrame(lambda df: saveFunction(df))
+snsc.start()
+
+snsc.sql("select count(*) from streamingExample").show()
+```
+> Note - Currently Snappy dont have Python API's added for continuous queries and AQP/Sampling.
+
 ### Running Spark programs inside the database
 
 > Note: Above simple example uses local mode (i.e. development mode) to create tables and update data. In the production environment, users will want to deploy the SnappyData system as a unified cluster (default cluster model that consists of servers that embed colocated Spark executors and Snappy stores, locators, and a job server enabled lead node) or as a split cluster (where Spark executors and Snappy stores form independent clusters). Refer to the  [deployment](deployment.md) chapter for all the supported deployment modes and the [configuration](configuration.md) chapter for configuring the cluster. This mode is supported in both Java and Scala. Support for Python is yet not added.
@@ -242,14 +311,14 @@ SnappySQLJob trait extends the SparkJobBase trait. It provides users the singlet
 
 
 #### Submitting jobs
-Following command submits [CreateAndLoadAirlineDataJob](https://github.com/SnappyDataInc/snappydata/blob/master/snappy-examples/src/main/scala/io/snappydata/examples/CreateAndLoadAirlineDataJob.scala) from the [snappy-examples](https://github.com/SnappyDataInc/snappydata/tree/master/snappy-examples/src/main/scala/io/snappydata/examples) directory.   This job creates dataframes from parquet files, loads the data from dataframe into column tables and row tables and creates sample table on column table in its runJob method. The program is compiled into a jar file (quickstart-0.3.0-PREVIEW.jar) and submitted to jobs server as shown below.
+Following command submits [CreateAndLoadAirlineDataJob](https://github.com/SnappyDataInc/snappydata/blob/master/snappy-examples/src/main/scala/io/snappydata/examples/CreateAndLoadAirlineDataJob.scala) from the [snappy-examples](https://github.com/SnappyDataInc/snappydata/tree/master/snappy-examples/src/main/scala/io/snappydata/examples) directory.   This job creates dataframes from parquet files, loads the data from dataframe into column tables and row tables and creates sample table on column table in its runJob method. The program is compiled into a jar file (quickstart-0.4.0-PREVIEW.jar) and submitted to jobs server as shown below.
 
 ```
 $ bin/snappy-job.sh submit  \
     --lead hostNameOfLead:8090  \
     --app-name airlineApp \
     --class  io.snappydata.examples.CreateAndLoadAirlineDataJob \
-    --app-jar $SNAPPY_HOME/lib/quickstart-0.3.0-PREVIEW.jar
+    --app-jar $SNAPPY_HOME/lib/quickstart-0.4.0-PREVIEW.jar
 ```
 The utility snappy-job.sh submits the job and returns a JSON that has a jobId of this job.
 
@@ -291,7 +360,7 @@ $ bin/snappy-job.sh submit  \
     --lead hostNameOfLead:8090  \
     --app-name airlineApp \
     --class  io.snappydata.examples.AirlineDataJob \
-    --app-jar $SNAPPY_HOME/lib/quickstart-0.3.0-PREVIEW.jar
+    --app-jar $SNAPPY_HOME/lib/quickstart-0.4.0-PREVIEW.jar
 ```
 The status of this job can be queried in the same manner as shown above. The result of the this job will return a file path that has the query results. 
 
@@ -307,28 +376,38 @@ $ bin/spark-submit \
 
 #### Streaming jobs
 
-An implementation of SnappyStreamingJob can be submitted to lead of SnappyData by specifying --stream as a parameter to the snappy-job.sh.  For example [TwitterPopularTagsJob](https://github.com/SnappyDataInc/snappydata/blob/master/snappy-examples/src/main/scala/io/snappydata/examples/TwitterPopularTagsJob.scala) from the [snappy-examples](https://github.com/SnappyDataInc/snappydata/tree/master/snappy-examples/src/main/scala/io/snappydata/examples) directory can be submitted as follows. This job creates stream tables on tweet streams, registers continuous queries and prints results of queries such as top 10 hash tags of last two second, top 10 hash tags until now, top 10 popular tweets.
+An implementation of SnappyStreamingJob can be submitted to the lead node of SnappyData cluster by specifying ```--stream``` as an option to the submit command. This option will cause creation of a new SnappyStreamingContext before the job is submitted. Alternatively, user may specify the name of an existing/pre-created streaming context as ```--context <context-name>``` with the submit command.
+
+For example, [TwitterPopularTagsJob](https://github.com/SnappyDataInc/snappydata/blob/master/snappy-examples/src/main/scala/io/snappydata/examples/TwitterPopularTagsJob.scala) from the [snappy-examples](https://github.com/SnappyDataInc/snappydata/tree/master/snappy-examples/src/main/scala/io/snappydata/examples) directory can be submitted as follows. This job creates stream tables on tweet streams, registers continuous queries and prints results of queries such as top 10 hash tags of last two second, top 10 hash tags until now, top 10 popular tweets.
 
 ```
 $ bin/snappy-job.sh submit  \
     --lead hostNameOfLead:8090  \
     --app-name airlineApp \
     --class  io.snappydata.examples.TwitterPopularTagsJob \
-    --app-jar $SNAPPY_HOME/lib/quickstart-0.3.0-PREVIEW.jar \
+    --app-jar $SNAPPY_HOME/lib/quickstart-0.4.0-PREVIEW.jar \
     --stream
+
+{
+  "status": "STARTED",
+  "result": {
+    "jobId": "982ac142-3550-41e1-aace-6987cb39fec8",
+    "context": "snappyStreamingContext1463987084945028747"
+  }
+}
 ```
 
-User needs to stop the currently running streaming job followed by its streaming context before being able to submit a new streaming job.
+User needs to stop the currently running streaming job followed by its streaming context if the user intends to submit another streaming job with a new streaming context.
 
 ```
 $ bin/snappy-job.sh stop  \
     --lead hostNameOfLead:8090  \
-    --job-id 321e5136-4a18-4c4f-b8ab-f3c8f04f0b48
+    --job-id 982ac142-3550-41e1-aace-6987cb39fec8
 
 $ bin/snappy-job.sh listcontexts  \
     --lead hostNameOfLead:8090
-["snappyContext1452598154529305363"]
+["snappyContext1452598154529305363", "snappyStreamingContext1463987084945028747", "snappyStreamingContext"]
 
-$ bin/snappy-job.sh stopcontext snappyContext1452598154529305363  \
+$ bin/snappy-job.sh stopcontext snappyStreamingContext1463987084945028747  \
     --lead hostNameOfLead:8090
 ```
