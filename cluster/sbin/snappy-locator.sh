@@ -39,7 +39,7 @@ shift
 
 # Start up  the locator instance
 function start_instance {
-  "$SPARK_HOME"/bin/snappy-shell locator "$mode" "$@"
+  "$sbin/snappy-nodes.sh" locator cd "$SPARK_HOME" \; "$SPARK_HOME"/bin/snappy-shell locator "$mode" "$@"
 }
 
 start_instance "$@"

@@ -38,7 +38,7 @@ shift
 
 # Start up  the lead instance
 function start_instance {
-  "$SPARK_HOME"/bin/snappy-shell leader "$mode" "$@"
+  "$sbin/snappy-nodes.sh" lead cd "$SPARK_HOME" \; "$SPARK_HOME"/bin/snappy-shell leader "$mode" "$@"
 }
 
 start_instance "$@"
