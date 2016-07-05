@@ -140,7 +140,6 @@ object TPCHColumnPartitionedTable  {
     val orderData = sc.textFile(s"$path/orders.tbl")
     val orderReadings = orderData.map(s => s.split('|')).map(s => parseOrderRow(s))
     val orderDF = sqlContext.createDataFrame(orderReadings)
-    println("KBKBKBKB: Buckets : " + buckets)
     if (isSnappy) {
       val p1 = Map(("PARTITION_BY"-> "o_orderkey"),("BUCKETS"-> buckets))
       //val p1 = Map(("PARTITION_BY"-> "o_orderkey"))

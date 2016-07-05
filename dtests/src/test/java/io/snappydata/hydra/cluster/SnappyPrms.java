@@ -173,6 +173,11 @@ public class SnappyPrms extends BasePrms {
      */
     public static Long shufflePartitions;
 
+    /**
+     * path of the perf-test jar
+     */
+    public static Long perfTestJarPath;
+
     public static int getExecutorCores() {
         Long key = executorCores;
         return tasktab().intAt(key, tab().intAt(key, 1));
@@ -271,6 +276,11 @@ public class SnappyPrms extends BasePrms {
     public static Vector getSnappyJobClassNamesForCloseTask() {
         Long key = jobClassNamesForCloseTask;
         return BasePrms.tasktab().vecAt(key, BasePrms.tab().vecAt(key, null));
+    }
+
+    public static String getPerfTestJarPath(){
+        Long key = perfTestJarPath;
+        return tab().stringAt(key, "");
     }
 
     static {

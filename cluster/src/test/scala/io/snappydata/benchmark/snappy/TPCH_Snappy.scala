@@ -22,7 +22,6 @@ object TPCH_Snappy {
 
    def execute(queryNumber: String, sqlContext: SQLContext, isResultCollection: Boolean, isSnappy:Boolean, itr : Int): Unit = {
      //val snappyContext = SnappyContext.getOrCreate(sc)
-    println(s"KBKBKB In execute $queryNumber")
      var queryFileStream: FileOutputStream = new FileOutputStream(new File(s"$queryNumber.out"))
      var queryPrintStream:PrintStream = new PrintStream(queryFileStream)
 
