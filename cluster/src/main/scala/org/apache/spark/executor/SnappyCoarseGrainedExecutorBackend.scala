@@ -20,9 +20,7 @@ import java.net.URL
 
 import io.snappydata.cluster.ExecutorInitiator
 
-import org.apache.spark.executor.SnappyUncaughtExceptionHandler._
 import org.apache.spark.util.{SparkExitCode, ShutdownHookManager}
-import org.apache.spark.util.SparkUncaughtExceptionHandler._
 import org.apache.spark.{Logging, SparkEnv}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rpc.RpcEnv
