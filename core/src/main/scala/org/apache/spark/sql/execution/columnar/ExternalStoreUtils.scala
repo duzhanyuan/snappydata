@@ -408,9 +408,11 @@ object ExternalStoreUtils {
   final def cachedBatchesToRows(
       cachedBatches: Iterator[CachedBatch],
       requestedColumns: Array[String],
-      schema: StructType): Iterator[InternalRow] = {
+      schema: StructType, forScan: Boolean): Iterator[InternalRow] = {
     // check and compare with InMemoryColumnarTableScan
     val numColumns = requestedColumns.length
+    val repeats = 100
+
     val columnIndices = new Array[Int](numColumns)
     val columnDataTypes = new Array[DataType](numColumns)
     for (index <- 0 until numColumns) {
@@ -423,7 +425,8 @@ object ExternalStoreUtils {
     }
     // TODO: partition pruning like in InMemoryColumnarTableScan?
     val columnarIterator = GenerateColumnAccessor.generate(columnDataTypes)
-    columnarIterator.initialize(cachedBatches, columnDataTypes, columnIndices)
+    val ncachedBatches = if (forScan) cachedBatches.flatMap(b => (0 until repeats).map(_ => b)) else cachedBatches
+    columnarIterator.initialize(ncachedBatches, columnDataTypes, columnIndices)
     columnarIterator
 
   }

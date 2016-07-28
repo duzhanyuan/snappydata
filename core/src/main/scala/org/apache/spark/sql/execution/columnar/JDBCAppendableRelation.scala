@@ -131,7 +131,7 @@ case class JDBCAppendableRelation(
       // If none are requested, use the narrowest (the field with
       // minimum default element size).
 
-      ExternalStoreUtils.cachedBatchesToRows(cachedBatchIterator, requestedColumns, schema)
+      ExternalStoreUtils.cachedBatchesToRows(cachedBatchIterator, requestedColumns, schema, true)
     }.asInstanceOf[RDD[Row]]
   }
 

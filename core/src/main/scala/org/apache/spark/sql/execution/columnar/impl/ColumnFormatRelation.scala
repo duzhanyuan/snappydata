@@ -174,7 +174,7 @@ class BaseColumnFormatRelation(
     } else {
       // TODO: can we do it before compressing. Might save a bit
       val unCachedRows = ExternalStoreUtils.cachedBatchesToRows(
-        Iterator(batch), schema.map(_.name).toArray, schema)
+        Iterator(batch), schema.map(_.name).toArray, schema, false)
       insert(unCachedRows)
     }
     accumulated
