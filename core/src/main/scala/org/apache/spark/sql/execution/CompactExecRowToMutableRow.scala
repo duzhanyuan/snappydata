@@ -24,7 +24,7 @@ import scala.collection.mutable.ArrayBuffer
 import com.pivotal.gemfirexd.internal.engine.store.{AbstractCompactExecRow, ResultWasNull}
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{SpecificMutableRow, UnsafeArrayData, UnsafeMapData, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.store.StoreUtils
 import org.apache.spark.sql.types.{DataType, Decimal, DecimalType, StructType}
@@ -222,6 +222,7 @@ trait CompactExecRowToMutableRow extends ResultWasNull {
       }
       i = i + 1
     }
-    mutableRow
+    unsafeproj.apply(mutableRow)
   }
+  val unsafeproj = UnsafeProjection.create(schema.map(_.dataType).toArray)
 }

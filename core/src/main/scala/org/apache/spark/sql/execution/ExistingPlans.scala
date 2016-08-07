@@ -36,6 +36,8 @@ private[sql] case class PartitionedPhysicalRDD(
     extraInformation: String) extends LeafNode {
 
   protected override def doExecute(): RDD[InternalRow] = rdd
+  
+  override def outputsUnsafeRows: Boolean = true
 
   /** Specifies how data is partitioned across different nodes in the cluster. */
   override lazy val outputPartitioning: Partitioning = {

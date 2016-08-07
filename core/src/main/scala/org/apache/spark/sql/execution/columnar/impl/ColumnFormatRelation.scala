@@ -105,12 +105,49 @@ class BaseColumnFormatRelation(
     super.scanTable(ColumnFormatRelation.cachedBatchTableName(tableName),
       requiredColumns, filters)
   }
+  def scanTable1(tableName: String, requiredColumns: Array[String],
+                         filters: Array[Filter]): RDD[InternalRow] = {
+    super.myscan(requiredColumns, filters)
+  }
 
+  def buildScan1(requiredColumns: Array[String],
+                         filters: Array[Filter]): RDD[InternalRow] = {
+    val colRdd = scanTable1(table, requiredColumns, filters)
+    // TODO: Suranjan scanning over column rdd before row will make sure
+    // that we don't have duplicates; we may miss some results though
+    // [sumedh] In the absence of snapshot isolation, one option is to
+    // use increasing cached batch IDs and note the IDs at the start, then
+    // scan row buffer first and delay cached batch creation till that is done,
+    // finally skipping any IDs greater than the noted ones.
+    // However, with plans for mutability in column store (via row buffer) need
+    // to re-think in any case and provide proper snapshot isolation in store.
+    val isPartitioned = region.getPartitionAttributes != null
+    val zipped = connectionType match {
+      case ConnectionType.Embedded =>
+        val rowRdd = new RowFormatScanRDD(
+          sqlContext.sparkContext,
+          executorConnector,
+          ExternalStoreUtils.pruneSchema(schemaFields, requiredColumns),
+          resolvedName,
+          isPartitioned,
+          requiredColumns,
+          connProperties,
+          filters,
+          Array.empty[Partition],
+          blockMap
+        )
+
+        rowRdd.zipPartitions(colRdd) { (leftItr, rightItr) =>
+          leftItr ++ rightItr
+        }
+    }
+    zipped
+  }
   // TODO: Suranjan currently doesn't apply any filters.
   // will see that later.
   override def buildScan(requiredColumns: Array[String],
       filters: Array[Filter]): RDD[Row] = {
-    val colRdd = scanTable(table, requiredColumns, filters)
+    val colRdd = scanTable(table, requiredColumns, filters).asInstanceOf[RDD[Row]]
     // TODO: Suranjan scanning over column rdd before row will make sure
     // that we don't have duplicates; we may miss some results though
     // [sumedh] In the absence of snapshot isolation, one option is to

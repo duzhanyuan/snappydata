@@ -23,7 +23,10 @@ import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.{InternalRow, expressions}
 import org.apache.spark.sql.execution.PartitionedDataSourceScan
+import org.apache.spark.sql.execution.columnar.JDBCAppendableRelation
+import org.apache.spark.sql.execution.columnar.impl.BaseColumnFormatRelation
 import org.apache.spark.sql.execution.datasources.DataSourceStrategy._
+import org.apache.spark.sql.execution.row.RowFormatRelation
 import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.{AnalysisException, Row, Strategy, execution}
 
@@ -36,14 +39,28 @@ private[sql] object StoreDataSourceStrategy extends Strategy with Logging {
 
   def apply(plan: LogicalPlan): Seq[execution.SparkPlan] = plan match {
     case PhysicalOperation(projects, filters,
-        l@LogicalRelation(t: PartitionedDataSourceScan, _)) =>
-      pruneFilterProject(
-        l,
-        projects,
-        filters,
-        t.numPartitions,
-        t.partitionColumns,
-        (a, f) => toCatalystRDD(l, a, t.buildScan(a.map(_.name).toArray, f))) :: Nil
+    l@LogicalRelation(t: PartitionedDataSourceScan, _)) =>
+      if (t.isInstanceOf[RowFormatRelation]) {
+        pruneFilterProject(
+          l,
+          projects,
+          filters,
+          t.numPartitions,
+          t.partitionColumns,
+          (a, f) => toCatalystRDD(l, a, t.buildScan(a.map(_.name).toArray, f))) :: Nil
+      } else {
+        pruneFilterProject(
+          l,
+          projects,
+          filters,
+          t.numPartitions,
+          t.partitionColumns,
+          (a, f) => {
+            val x = t.asInstanceOf[BaseColumnFormatRelation].buildScan1(a.map(_.name).toArray, f)
+            x
+          }) :: Nil
+      }
+
 
     case _ => Nil
   }

@@ -18,6 +18,8 @@ package org.apache.spark.sql.execution.columnar
 
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
+import org.apache.spark.sql.execution.columnar.impl.ColumnFormatRelation
+
 import scala.collection.mutable
 
 import _root_.io.snappydata.{Constant, StoreTableValueSizeProviderService}
@@ -109,9 +111,9 @@ case class JDBCAppendableRelation(
     scanTable(table, requiredColumns, filters)
   }
 
-  def scanTable(tableName: String, requiredColumns: Array[String],
-      filters: Array[Filter]): RDD[Row] = {
-
+  def myscan(requiredColumns: Array[String],
+             filters: Array[Filter]): RDD[InternalRow] = {
+    val tableName = ColumnFormatRelation.cachedBatchTableName(table)
     val requestedColumns = if (requiredColumns.isEmpty) {
       val narrowField =
         schema.fields.minBy { a =>
@@ -134,10 +136,16 @@ case class JDBCAppendableRelation(
       // If none are requested, use the narrowest (the field with
       // minimum default element size).
 
-      ExternalStoreUtils.cachedBatchesToRows(cachedBatchIterator,
-        requestedColumns, schema, forScan = true)
-    }.asInstanceOf[RDD[Row]]
+      ExternalStoreUtils.cachedBatchesToRows(cachedBatchIterator, requestedColumns, schema, true)
+    }
   }
+  def scanTable(tableName: String, requiredColumns: Array[String],
+                filters: Array[Filter]): RDD[Row] = {
+
+    myscan(requiredColumns, filters).asInstanceOf[RDD[Row]]
+  }
+
+
 
   override def insert(df: DataFrame, overwrite: Boolean = true): Unit = {
     insert(df.queryExecution.toRdd, df, overwrite)

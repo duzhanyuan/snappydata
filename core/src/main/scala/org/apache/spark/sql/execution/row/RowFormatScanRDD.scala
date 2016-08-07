@@ -28,7 +28,7 @@ import com.pivotal.gemfirexd.internal.engine.store.AbstractCompactExecRow
 import com.pivotal.gemfirexd.internal.impl.jdbc.EmbedResultSet
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{SpecificMutableRow, UnsafeArrayData, UnsafeMapData, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.{SpecificMutableRow, UnsafeArrayData, UnsafeMapData, UnsafeRow, UnsafeProjection}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.collection.MultiExecutorLocalPartition
 import org.apache.spark.sql.execution.columnar.{ExternalStoreUtils, ResultSetIterator}
@@ -260,7 +260,7 @@ final class InternalRowIteratorOnRS(conn: Connection,
   private[this] val fieldTypes = StoreUtils.mapCatalystTypes(schema, dataTypes)
 
   private[this] val mutableRow = new SpecificMutableRow(dataTypes)
-
+  val unsafeproj = UnsafeProjection.create(schema.map(_.dataType).toArray)
   override def next(): InternalRow = {
     var i = 0
     while (i < schema.length) {
@@ -414,7 +414,7 @@ final class InternalRowIteratorOnRS(conn: Connection,
       i = i + 1
     }
     moveNext()
-    mutableRow
+    unsafeproj.apply(mutableRow)
   }
 }
 
