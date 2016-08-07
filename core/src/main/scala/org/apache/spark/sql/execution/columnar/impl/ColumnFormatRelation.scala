@@ -133,8 +133,7 @@ class BaseColumnFormatRelation(
           requiredColumns,
           connProperties,
           filters,
-          Array.empty[Partition],
-          blockMap
+          Array.empty[Partition]
         )
 
         rowRdd.zipPartitions(colRdd) { (leftItr, rightItr) =>
