@@ -90,5 +90,5 @@ class SnappyContextFunctions {
   def executePlan(session: SnappySession,
       plan: LogicalPlan): QueryExecution = new QueryExecution(session, plan)
 
-  def sql[T](fn: => T): T
+  def sql[T](fn: => T): T = fn
 }
