@@ -62,6 +62,7 @@ SNAPPY_EC2_DIR = os.path.dirname(os.path.realpath(__file__))
 SNAPPY_AWS_CONF_DIR = SNAPPY_EC2_DIR + "/deploy/home/ec2-user/snappydata"
 SNAPPYDATA_UI_PORT = ""
 LOCATOR_CLIENT_PORT = "1527"
+PULSE_HTTP_PORT = "7070"
 
 DEFAULT_SNAPPY_VERSION = "LATEST"
 
@@ -399,6 +400,7 @@ def get_ami(opts):
 def read_ports_from_conf(fname, patterns):
     global SNAPPYDATA_UI_PORT
     global LOCATOR_CLIENT_PORT
+    global PULSE_HTTP_PORT
     ports = []
 
     if os.path.exists(fname):
@@ -412,6 +414,8 @@ def read_ports_from_conf(fname, patterns):
                         SNAPPYDATA_UI_PORT = m.group(0)
                     if pattern == "-client-port=" and fname == SNAPPY_AWS_CONF_DIR + '/locators':
                         LOCATOR_CLIENT_PORT = m.group(0)
+                    if pattern == "-jmx-manager-http-port=" and fname == SNAPPY_AWS_CONF_DIR + '/locators':
+                        PULSE_HTTP_PORT = m.group(0)
             conffile.close()
     return ports
 
@@ -1419,6 +1423,7 @@ def get_dns_name(instance, private_ips=False):
 
 def real_main():
     global SNAPPYDATA_UI_PORT
+    global PULSE_HTTP_PORT
     (opts, action, cluster_name) = parse_args()
 
     # Input parameter validation
@@ -1511,17 +1516,21 @@ def real_main():
         )
         setup_cluster(conn, locator_nodes, lead_nodes, server_nodes, zeppelin_nodes, opts, True)
         lead = get_dns_name(lead_nodes[0], opts.private_ips)
+        locator = get_dns_name(locator_nodes[0], opts.private_ips)
         if SNAPPYDATA_UI_PORT == "":
             SNAPPYDATA_UI_PORT = '4040'
         url = "http://%s:%s" % (lead, SNAPPYDATA_UI_PORT)
-        print("SnappyData Unified cluster started at %s" % url)
+        print("SnappyData Unified cluster started.")
+        print("  Access Apache Spark UI at %s" % url)
+        url = "http://%s:%s/pulse" % (locator, PULSE_HTTP_PORT)
+        print("  Access Pulse UI at %s, type 'admin' as username and password when prompted." % url)
         if opts.with_zeppelin is not None:
             if len(zeppelin_nodes) == 1:
                 zp = get_dns_name(zeppelin_nodes[0], opts.private_ips)
             else:
                 zp = lead
             url = "http://%s:8080" % zp
-            print("Apache Zeppelin server started at %s" % url)
+            print("  Access Apache Zeppelin server at %s (launched in your browser window)." % url)
             time.sleep(2)
             webbrowser.open_new_tab(url)
 
