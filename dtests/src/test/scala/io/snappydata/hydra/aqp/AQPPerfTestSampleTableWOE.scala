@@ -16,6 +16,7 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
 
   override def runSnappyJob(snc: SnappyContext, jobConfig: Config): Any = {
     val numIter = jobConfig.getString("numIter").toInt
+    val skipTill = jobConfig.getString("skipTill").toInt
     val queryFile :String = jobConfig.getString("queryFile")
     val sampleDataLocation : String = jobConfig.getString("sampleDataLocation")
     val queryArray = scala.io.Source.fromFile(queryFile).getLines().mkString.split(";")
@@ -24,9 +25,6 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
     def getCurrentDirectory = new java.io.File( "." ).getCanonicalPath
     val props = Map[String, String]()
     val pw = new PrintWriter("AQPPerfTestSampleTableWOE.out")
-
-
-    val skipTill = jobConfig.getString("skipTill").toInt
 
     pw.println("Creating AIRLINE_SAMPLE table")
     snc.sql(s"CREATE SAMPLE TABLE AIRLINE_SAMPLE ON AIRLINE1 " +
@@ -41,6 +39,7 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
       println("Creating table SampleTableWOE ")
       println("sampleTableLocation is "+ sampleDataLocation)
       pw.println("Creating SampleTableWOE table")
+
       //Use the saved sampled data to create a normal column table ,this is to avoid resampling as this data is already sampled.
       val df = snc.read.load(sampleDataLocation).toDF("YEAR_","Month_", "DayOfMonth",
         "DayOfWeek" ,"UniqueCarrier","TailNum" ,"FlightNum","Origin" ,"Dest","CRSDepTime","DepTime" ,"DepDelay","TaxiOut",

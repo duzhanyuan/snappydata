@@ -12,7 +12,7 @@ object AQPPerfTest  extends SnappySQLJob {
 
   override def runSnappyJob(snc: SnappyContext, jobConfig: Config): Any = {
     val numIter = jobConfig.getString("numIter").toInt
-    println("NumIter is " +numIter)
+    val skipTill = jobConfig.getString("skipTill").toInt
     val queryFile :String = jobConfig.getString("queryFile");
     val queryArray = scala.io.Source.fromFile(queryFile).getLines().mkString.split(";")
     val execTimeArray = new Array[Double](queryArray.length)
@@ -21,7 +21,6 @@ object AQPPerfTest  extends SnappySQLJob {
     val props = Map[String, String]()
     val pw = new PrintWriter("AQPPerfResults.out")
 
-    val skipTill = jobConfig.getString("skipTill").toInt
     Try {
 
       AQPPerfTestUtil.runPerftest(numIter,snc,pw,queryArray,skipTill,execTimeArray)
