@@ -18,9 +18,9 @@ object PopulateDataJob extends SnappySQLJob {
     val pw = new PrintWriter("PopulateDataJob.out")
     Try {
       val tempTable = "tempcoltable"
-      val numIter = 47
+      val numIter = jobConfig.getString("numIter").toInt
       var i : Double= 0
-      while(i <= numIter) {
+      while(numIter != 0 && i <= numIter) {
         val airlineDF1: DataFrame = snc.sql("select * from airline")
         airlineDF1.registerTempTable(tempTable)
         airlineDF1.write.format("column").mode(SaveMode.Append).saveAsTable("airline1")
@@ -28,6 +28,12 @@ object PopulateDataJob extends SnappySQLJob {
         snc.dropTempTable(tempTable)
 
       }
+      snc.sql("DROP TABLE IF EXISTS AIRLINE")
+      val actualResult = snc.sql("select count(*) from airline1")
+      val result = actualResult.collect()
+      result.foreach(rs => {
+        pw.println(rs.toString)
+      })
       val df=snc.sql("SELECT * from airline1")
       df.write.parquet(dataLocation)
     } match {
