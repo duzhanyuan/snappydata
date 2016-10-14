@@ -18,8 +18,6 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
     val numIter = jobConfig.getString("numIter").toInt
     val queryFile :String = jobConfig.getString("queryFile")
     val sampleDataLocation : String = jobConfig.getString("sampleDataLocation")
-    val df = snc.sql("SELECT * from airline_sample")
-    df.write.csv(sampleDataLocation)
     val queryArray = scala.io.Source.fromFile(queryFile).getLines().mkString.split(";")
     val execTimeArray = new Array[Double](queryArray.length)
 
@@ -30,18 +28,32 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
 
     val skipTill = jobConfig.getString("skipTill").toInt
 
+    pw.println("Creating AIRLINE_SAMPLE table")
+    snc.sql(s"CREATE SAMPLE TABLE AIRLINE_SAMPLE ON AIRLINE1 " +
+        " OPTIONS(buckets '7',qcs 'UniqueCarrier, Year_, Month_'," +
+        " fraction '0.03',strataReservoirSize '50') " +
+        " AS (SELECT * FROM AIRLINE1);")
+
+    createSampleTableWOE()
+
     def createSampleTableWOE():Unit={
-
       storeSampleTableValue()
-
-      //Use the saved file to crate a sample table ,without actually re-sampling it,because the data in the sample.csv is already sampled.
+      println("Creating table SampleTableWOE ")
+      println("sampleTableLocation is "+ sampleDataLocation)
+      pw.println("Creating SampleTableWOE table")
+      //Use the saved sampled data to create a normal column table ,this is to avoid resampling as this data is already sampled.
       val df = snc.read.load(sampleDataLocation).toDF("YEAR_","Month_", "DayOfMonth",
         "DayOfWeek" ,"UniqueCarrier","TailNum" ,"FlightNum","Origin" ,"Dest","CRSDepTime","DepTime" ,"DepDelay","TaxiOut",
         "TaxiIn","CRSArrTime","ArrTime" ,"ArrDelay","Cancelled","CancellationCode","Diverted","CRSElapsedTime",
         "ActualElapsedTime","AirTime","Distance","CarrierDelay","WeatherDelay","NASDelay","SecurityDelay",
         "LateAircraftDelay","ArrDelaySlot", "SNAPPY_SAMPLER_WEIGHTAGE")
-      snc.createTable("sampleTable_WOE", "column", df.schema, Map("buckets" -> "8"))
+      snc.createTable("sampleTable_WOE", "column", df.schema, Map("buckets" -> "7"))
       df.write.insertInto("sampleTable_WOE")
+      val actualResult = snc.sql("select count(*) as sample_ from sampleTable_WOE")
+      val result = actualResult.collect()
+      result.foreach(rs => {
+        pw.println(rs.toString)
+      })
     }
 
     //Save the already created sampletable data as a parquet
@@ -57,7 +69,7 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
 
      } match {
       case Success(v) => pw.close()
-        s"See ${getCurrentDirectory}/AQPPerfResults.out"
+        s"See ${getCurrentDirectory}/AQPPerfTestSampleTableWOE.out"
       case Failure(e) => pw.close();
         throw e;
     }

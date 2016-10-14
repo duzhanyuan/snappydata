@@ -21,10 +21,10 @@ object AQPPartialRoutingTest extends SnappySQLJob {
 
     def getCurrentDirectory = new java.io.File( "." ).getCanonicalPath
     val props = Map[String, String]()
-    val pw = new PrintWriter("AQPPerfResults.out")
+    val pw = new PrintWriter("AQPPartialRoutingTest.out")
 
      //Create an empty table with VARCHAR datatype instead of String
-     snc.sql( s"""CREATE TABLE AIRLINE (
+    val airlineDataFrame = snc.sql( s"""CREATE TABLE AIRLINE (
                  YEAR_ INTEGER NOT NULL,
                  MONTH_ INTEGER NOT NULL,
                  DayOfMonth INTEGER NOT NULL,
@@ -60,7 +60,6 @@ object AQPPartialRoutingTest extends SnappySQLJob {
          """)
 
      //Populate the AIRLINE table as row table
-    val airlineDataFrame :DataFrame = null
     airlineDataFrame.write.format("row").mode(SaveMode.Append).saveAsTable("AIRLINE")
     val skipTill = jobConfig.getString("skipTill").toInt
     Try {
@@ -69,7 +68,7 @@ object AQPPartialRoutingTest extends SnappySQLJob {
 
     } match {
       case Success(v) => pw.close()
-        s"See ${getCurrentDirectory}/AQPPerfResults.out"
+        s"See ${getCurrentDirectory}/AQPPartialRoutingTest.out"
       case Failure(e) => pw.close();
         throw e;
     }
