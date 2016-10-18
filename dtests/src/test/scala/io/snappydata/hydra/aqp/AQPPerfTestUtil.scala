@@ -47,7 +47,7 @@ object AQPPerfTestUtil {
     for(i <- 0 to queryArray.length - 1)
     {
       val meanQueryTime = execTimeArray(i)/(numIter - skipTill + 1)
-      pw1.println(s"Query ${queryArray(i)} took = ${meanQueryTime}ms as a mean over ${actualIter} iterrations")
+      pw1.println(meanQueryTime)
       pw.println(s"Query ${queryArray(i)} took = ${meanQueryTime}ms as a mean over ${actualIter} iterrations")
       pw.println()
     }
