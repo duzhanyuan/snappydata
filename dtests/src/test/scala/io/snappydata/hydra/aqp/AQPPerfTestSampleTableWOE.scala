@@ -9,7 +9,8 @@ import com.typesafe.config.Config
 import org.apache.spark.sql.{SnappyJobValid, SnappyJobValidation, SnappyContext, SnappySQLJob}
 
 
-/**This test will let us know the cost of sampling
+/**This test will let us know the cost of sampling.
+  *
  * Created by supriya on 4/10/16.
  */
 object AQPPerfTestSampleTableWOE extends SnappySQLJob {
@@ -29,7 +30,7 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
     pw.println("Creating AIRLINE_SAMPLE table")
     snc.sql(s"CREATE SAMPLE TABLE AIRLINE_SAMPLE ON AIRLINE1 " +
         " OPTIONS(buckets '7',qcs 'UniqueCarrier, Year_, Month_'," +
-        " fraction '0.03',strataReservoirSize '50') " +
+        " fraction '0.01',strataReservoirSize '50') " +
         " AS (SELECT * FROM AIRLINE1);")
 
     createSampleTableWOE()
@@ -48,10 +49,15 @@ object AQPPerfTestSampleTableWOE extends SnappySQLJob {
         "LateAircraftDelay","ArrDelaySlot", "SNAPPY_SAMPLER_WEIGHTAGE")
       snc.createTable("sampleTable_WOE", "column", df.schema, Map("buckets" -> "7"))
       df.write.insertInto("sampleTable_WOE")
-      val actualResult = snc.sql("select count(*) as sample_ from sampleTable_WOE")
+      val actualResult = snc.sql("select count(*) from sampleTable_WOE")
       val result = actualResult.collect()
       result.foreach(rs => {
-        pw.println(rs.toString)
+        pw.println("Count of sampleTable_WOE = " + rs.toString)
+      })
+      val actualResult1 = snc.sql("select count(*) as sample_ from airline_sample")
+      val result1 = actualResult1.collect()
+      result1.foreach(rs => {
+        pw.println("Count of airline_sample = " + rs.toString)
       })
     }
 
