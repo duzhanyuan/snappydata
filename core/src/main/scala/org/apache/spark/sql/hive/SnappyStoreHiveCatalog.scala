@@ -29,7 +29,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 import scala.util.control.NonFatal
 
-import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
+import com.google.common.cache.{CacheLoader, CacheBuilder, LoadingCache}
 import com.google.common.util.concurrent.UncheckedExecutionException
 import io.snappydata.{Constant, Property}
 import org.apache.hadoop.conf.Configuration
@@ -149,7 +149,7 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
 
 
   /** A cache of Spark SQL data source tables that have been accessed. */
-  private val cachedDataSourceTables: LoadingCache[QualifiedTableName,
+  protected val cachedDataSourceTables: LoadingCache[QualifiedTableName,
       LogicalRelation] = {
     val cacheLoader = new CacheLoader[QualifiedTableName, LogicalRelation]() {
       override def load(in: QualifiedTableName): LogicalRelation = {
@@ -180,6 +180,11 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
     CacheBuilder.newBuilder().maximumSize(1000).build(cacheLoader)
   }
 
+  val cachedSampleTables: LoadingCache[QualifiedTableName,
+      Seq[(LogicalPlan, String)]] = createCachedSampleTables
+
+  def createCachedSampleTables = SnappyStoreHiveCatalog.cachedSampleTables
+
   private var relationDestroyVersion = 0
 
   def getCachedHiveTable(table: QualifiedTableName): LogicalRelation = {
@@ -195,6 +200,26 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
       }
 
       cachedDataSourceTables(table)
+    } catch {
+      case e@(_: UncheckedExecutionException | _: ExecutionException) =>
+        throw e.getCause
+    } finally {
+      sync.unlock()
+    }
+  }
+
+  def getCachedSampledRelations(table: QualifiedTableName): Seq[(LogicalPlan, String)] = {
+    val sync = SnappyStoreHiveCatalog.relationDestroyLock.readLock()
+    sync.lock()
+    try {
+      // if a relation has been destroyed (e.g. by another instance of catalog),
+      // then the cached ones can be stale, so check and clear entire cache
+      val globalVersion = SnappyStoreHiveCatalog.getRelationDestroyVersion
+      if (globalVersion != this.relationDestroyVersion) {
+        cachedSampleTables.invalidateAll()
+        this.relationDestroyVersion = globalVersion
+      }
+      cachedSampleTables(table)
     } catch {
       case e@(_: UncheckedExecutionException | _: ExecutionException) =>
         throw e.getCause
@@ -323,10 +348,19 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
 
       case None => synchronized {
         tempTables.getOrElse(tableIdent.table,
-          throw new TableNotFoundException(s"Table '$tableIdent' not found"))
+          throw new TableNotFoundException(s"Table '$tableIdent' not found")) match {
+          case lr:LogicalRelation => lr.copy(metastoreTableIdentifier = Some(tableIdent))
+          case x => x
+        }
       }
     }
   }
+
+
+
+
+
+
 
   override def lookupRelation(tableIdent: TableIdentifier,
       alias: Option[String]): LogicalPlan = {
@@ -378,6 +412,7 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
     }
 
     cachedDataSourceTables.invalidate(tableIdent)
+
     registerRelationDestroy()
 
     val schemaName = tableIdent.schemaName
@@ -398,6 +433,7 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
 
     // invalidate any cached plan for the table
     cachedDataSourceTables.invalidate(tableIdent)
+
 
     val tableProperties = new mutable.HashMap[String, String]
     tableProperties.put(HIVE_PROVIDER, provider)
@@ -624,7 +660,7 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
    *
    * This is mainly used for tests.
    */
-  override private[sql] def reset(): Unit = synchronized {
+  override  def reset(): Unit = synchronized {
     setCurrentDatabase(Constant.DEFAULT_SCHEMA)
     listDatabases().map(s => s.toUpperCase).
         filter(_ != Constant.DEFAULT_SCHEMA).
@@ -661,6 +697,14 @@ object SnappyStoreHiveCatalog {
   val HIVE_SCHEMA_NUMPARTS = "spark.sql.sources.schema.numParts"
   val HIVE_SCHEMA_PART = "spark.sql.sources.schema.part"
   val HIVE_METASTORE = "SNAPPY_HIVE_METASTORE"
+  val cachedSampleTables: LoadingCache[QualifiedTableName,
+      Seq[(LogicalPlan, String)]] = CacheBuilder.newBuilder().maximumSize(1).build(
+    new CacheLoader[QualifiedTableName, Seq[(LogicalPlan, String)]]() {
+      override def load(in: QualifiedTableName): Seq[(LogicalPlan, String)] = {
+        Seq.empty
+      }
+    })
+
 
   def processTableIdentifier(tableIdentifier: String, conf: SQLConf): String = {
     if (conf.caseSensitiveAnalysis) {
