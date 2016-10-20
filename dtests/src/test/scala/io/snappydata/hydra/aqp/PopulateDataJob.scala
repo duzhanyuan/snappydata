@@ -1,11 +1,9 @@
 package io.snappydata.hydra.aqp
 
 import java.io.{PrintWriter}
-
 import scala.util.{Failure, Success, Try}
-
 import com.typesafe.config.Config
-import org.apache.spark.sql.{SnappyJobValid, DataFrame, SnappyContext, SnappyJobValidation, SnappySQLJob,SaveMode}
+import org.apache.spark.sql.{SnappyJobValid, DataFrame, SnappyContext, SnappyJobValidation, SnappySQLJob, SaveMode}
 
 /**
  * Created by supriya on 7/10/16.
@@ -19,14 +17,13 @@ object PopulateDataJob extends SnappySQLJob {
     Try {
       val tempTable = "tempcoltable"
       val numIter = jobConfig.getString("numIter").toInt
-      var i : Double= 0
-      while(numIter != 0 && i <= numIter) {
+      var i: Double = 0
+      while (numIter != 0 && i <= numIter) {
         val airlineDF1: DataFrame = snc.sql("select * from airline")
         airlineDF1.registerTempTable(tempTable)
         airlineDF1.write.format("column").mode(SaveMode.Append).saveAsTable("airline1")
         i = i + 1
         snc.dropTempTable(tempTable)
-
       }
       snc.sql("DROP TABLE IF EXISTS AIRLINE")
       val actualResult = snc.sql("select count(*) from airline1")
@@ -34,7 +31,7 @@ object PopulateDataJob extends SnappySQLJob {
       result.foreach(rs => {
         pw.println(rs.toString)
       })
-      val df=snc.sql("SELECT * from airline1")
+      val df = snc.sql("SELECT * from airline1")
       df.write.parquet(dataLocation)
     } match {
       case Success(v) => pw.close()
@@ -49,6 +46,6 @@ object PopulateDataJob extends SnappySQLJob {
    *
    */
   override def isValidJob(sc: SnappyContext, config: Config): SnappyJobValidation = SnappyJobValid()
-
 }
+
 
