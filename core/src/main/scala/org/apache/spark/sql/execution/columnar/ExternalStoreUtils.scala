@@ -517,7 +517,7 @@ private[sql] final class ArrayBufferForRows(externalStore: ExternalStore,
     bufferSize: Int,
     reservoirInRegion: Boolean) {
 
-  var holder = getCachedBatchHolder(-1)
+  var holder = if (!reservoirInRegion) getCachedBatchHolder(-1) else null
 
   def getCachedBatchHolder(bucketId: Int): CachedBatchHolder =
     new CachedBatchHolder(columnBuilders, 0,
@@ -534,9 +534,10 @@ private[sql] final class ArrayBufferForRows(externalStore: ExternalStore,
 
   def endRows(u: Unit): Unit = {
     holder.forceEndOfBatch()
-    if (!reservoirInRegion) {
-      holder = getCachedBatchHolder(-1)
-    }
+    holder = if (!reservoirInRegion) {
+      getCachedBatchHolder(-1)
+    } else null
+
   }
 
   def startRows(u: Unit, bucketId: Int): Unit = {
