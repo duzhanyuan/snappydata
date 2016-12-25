@@ -20,6 +20,7 @@ import java.sql.{Connection, PreparedStatement}
 import java.util.Properties
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 import io.snappydata.Constant
 import io.snappydata.util.ServiceUtils
@@ -29,6 +30,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.collection.Utils
 import org.apache.spark.sql.execution.ConnectionPool
+import org.apache.spark.sql.execution.columnar.impl.BaseColumnFormatRelation
 import org.apache.spark.sql.execution.datasources.jdbc.DriverRegistry
 import org.apache.spark.sql.hive.SnappyStoreHiveCatalog
 import org.apache.spark.sql.jdbc.{JdbcDialect, JdbcDialects}
@@ -508,13 +510,14 @@ object ConnectionType extends Enumeration {
   val Embedded, Net, Unknown = Value
 }
 
-private[sql] final class ArrayBufferForRows(externalStore: ExternalStore,
+private[sql] final class ArrayBufferForRows(relation: BaseColumnFormatRelation,
     colTableName: String,
     schema: StructType,
     useCompression: Boolean,
     bufferSize: Int,
     reservoirInRegion: Boolean, columnBatchSize: Int) {
 
+  /*
   private var holder = getCachedBatchHolder(-1)
 
   def getCachedBatchHolder(bucketId: Int): CachedBatchHolder =
@@ -545,6 +548,26 @@ private[sql] final class ArrayBufferForRows(externalStore: ExternalStore,
 
   def appendRow(u: Unit, row: InternalRow): Unit = {
     holder.appendRow(row)
+  }
+
+  def forceEndOfBatch(): Unit = endRows(())
+  */
+
+  val buffer = new ArrayBuffer[InternalRow](1000)
+  var currentBucketId = -1
+
+  def startRows(u: Unit, bucketId: Int): Unit = {
+    currentBucketId = bucketId
+  }
+
+  def appendRow(u: Unit, row: InternalRow): Unit = {
+    buffer += row
+  }
+
+  def endRows(u: Unit): Unit = {
+    relation.insert(buffer.iterator, currentBucketId)
+    buffer.clear()
+    currentBucketId = -1
   }
 
   def forceEndOfBatch(): Unit = endRows(())

@@ -184,7 +184,7 @@ class BaseColumnFormatRelation(
       // which will be appended with such small pieces in future.
       val unCachedRows = ExternalStoreUtils.cachedBatchesToRows(
         Iterator(batch), schema.map(_.name).toArray, schema, forScan = false)
-      insert(unCachedRows)
+      insert(unCachedRows, -1)
     }
   }
 
@@ -236,19 +236,33 @@ class BaseColumnFormatRelation(
    * @param rows the rows to be inserted
    * @return number of rows inserted
    */
-  def insert(rows: Iterator[InternalRow]): Int = {
+  def insert(rows: Iterator[InternalRow], bucketId: Int): Int = {
     if (rows.hasNext) {
       val connProps = connProperties.connProps
       val batchSize = connProps.getProperty("batchsize", "1000").toInt
       val connection = ConnectionPool.getPoolConnection(table, dialect,
         connProperties.poolProps, connProps, connProperties.hikariCP)
+      var ps: PreparedStatement = null
       try {
+        if (bucketId >= 0) {
+          ps = connection.prepareStatement(
+            "call sys.SET_BUCKETS_FOR_LOCAL_EXECUTION(?, ?)")
+          ps.setString(1, resolvedName)
+          ps.setString(2, String.valueOf(bucketId))
+          ps.executeUpdate()
+        }
         val stmt = connection.prepareStatement(rowInsertStr)
         val result = CodeGeneration.executeUpdate(table, stmt, rows,
           multipleRows = true, batchSize, schema.fields.map(_.dataType), dialect)
         stmt.close()
         result
       } finally {
+        if (ps ne null) {
+          ps.setString(1, resolvedName)
+          ps.setString(2, "")
+          ps.executeUpdate()
+          ps.close()
+        }
         connection.close()
       }
     } else 0
