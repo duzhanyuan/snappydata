@@ -230,11 +230,6 @@ class LeadImpl extends ServerImpl with Lead with Logging {
 
   @throws[SQLException]
   override def stop(shutdownCredentials: Properties): Unit = {
-    val servers = GemFireXDUtils.getGfxdAdvisor.adviseDataStores(null)
-    if (servers.size() > 0) {
-      SnappyContext.flushSampleTables()
-    }
-
     assert(sparkContext != null, "Mix and match of LeadService api " +
         "and SparkContext is unsupported.")
     if (!sparkContext.isStopped) {
