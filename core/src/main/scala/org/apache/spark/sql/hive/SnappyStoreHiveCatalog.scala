@@ -425,7 +425,15 @@ class SnappyStoreHiveCatalog(externalCatalog: SnappyExternalCatalog,
       case None => synchronized {
         tempTables.getOrElse(tableIdent.table,
           throw new TableNotFoundException(s"Table '$tableIdent' not found")) match {
-          case lr: LogicalRelation => lr.copy(catalogTable = lr.catalogTable)
+          case lr: LogicalRelation => {
+            val catalogTable = if (lr.catalogTable.isDefined) {
+              lr.catalogTable
+            } else {
+              Some( CatalogTable(tableIdent, CatalogTableType.VIEW, CatalogStorageFormat.empty,
+                lr.schema))
+            }
+            lr.copy(catalogTable = catalogTable)
+          }
 
           case x => x
         }
