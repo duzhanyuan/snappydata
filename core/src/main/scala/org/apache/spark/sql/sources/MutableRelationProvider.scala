@@ -46,8 +46,9 @@ abstract class MutableRelationProvider
     val numPartitions = parameters.remove("numpartitions")
 
     val table = ExternalStoreUtils.removeInternalProps(parameters)
-    val connProperties = ExternalStoreUtils.validateAndGetAllProps(
-      Some(sqlContext.sparkSession), parameters)
+    val sc = sqlContext.sparkContext
+    val connProperties =
+      ExternalStoreUtils.validateAndGetAllProps(Some(sqlContext), parameters)
 
     val partitionInfo = if (partitionColumn.isEmpty) {
       null

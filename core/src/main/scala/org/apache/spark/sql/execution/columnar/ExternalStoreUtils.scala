@@ -19,16 +19,17 @@ package org.apache.spark.sql.execution.columnar
 import java.sql.{Connection, PreparedStatement}
 import java.util.Properties
 
+import com.gemstone.gemfire.i18n.StringIdImpl
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
 import com.gemstone.gemfire.internal.cache.ExternalTableMetaData
+import com.gemstone.gemfire.internal.i18n.LocalizedStrings
 import com.pivotal.gemfirexd.internal.engine.Misc
 import com.pivotal.gemfirexd.jdbc.ClientAttribute
 import io.snappydata.thrift.snappydataConstants
 import io.snappydata.util.ServiceUtils
 import io.snappydata.{Constant, Property}
-
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeAndComment, CodeFormatter, CodegenContext}
 import org.apache.spark.sql.collection.Utils
@@ -190,8 +191,12 @@ object ExternalStoreUtils extends Logging {
     }
   }
 
-  def validateAndGetAllProps(session: Option[SparkSession],
+  def validateAndGetAllProps(ss: Option[SQLContext],
       parameters: mutable.Map[String, String]): ConnectionProperties = {
+    val session = ss match {
+      case None => None
+      case Some(s) => Option(s.sparkSession)
+    }
 
     val url = parameters.remove("url").getOrElse(defaultStoreURL(
       session.map(_.sparkContext)))
@@ -239,6 +244,44 @@ object ExternalStoreUtils extends Logging {
     executorConnProps.remove("poolProperties")
     connProps.setProperty("driver", driver)
     executorConnProps.setProperty("driver", driver)
+
+    ss match {
+      case Some(s) => {
+        var uname = ss.get.conf.getConfString("user", "")
+        uname match {
+          case "" => {
+            Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS ESUtils no user, password in " +
+                s"sqlConf")
+            Thread.currentThread().getStackTrace.foreach(st => Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"  $st"))
+            // Check in sparkConf (coming from smart connector)
+            uname = session.get.sparkContext.getConf.get("spark.snappydata.store.user", "")
+            uname match {
+              case "" =>
+                Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS ESUtils no user, password in sparkConf")
+              case _ => {
+                val pass = ss.get.conf.getConfString("spark.snappydata.store.password")
+                Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS ESUtils user $uname, password $pass in sparkConf")
+                connProps.setProperty("user", uname)
+                connProps.setProperty("password", pass)
+                executorConnProps.setProperty("user", uname)
+                executorConnProps.setProperty("password", pass)
+              }
+            }
+          }
+          case _ => {
+            val pass = ss.get.conf.getConfString("password")
+            Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS ESUtils user $uname, password $pass in sqlConf")
+            Thread.currentThread().getStackTrace.foreach(st => Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"  $st"))
+            connProps.setProperty("user", uname)
+            connProps.setProperty("password", pass)
+            executorConnProps.setProperty("user", uname)
+            executorConnProps.setProperty("password", pass)
+          }
+        }
+      }
+      case _ =>
+    }
+
     val isEmbedded = dialect match {
       case GemFireXDDialect =>
         GemFireXDDialect.addExtraDriverProperties(isLoner, connProps)

@@ -389,6 +389,8 @@ object SnappyParserConsts {
   // marked as internal keywords to prevent use in SQL
   final val HIVE_METASTORE = reservedKeyword(
     SnappyStoreHiveCatalog.HIVE_METASTORE)
+  final val GRANT = reservedKeyword("grant")
+  final val REVOKE = reservedKeyword("revoke")
 
  final val SAMPLER_WEIGHTAGE = nonReservedKeyword(Utils.WEIGHTAGE_COLUMN_NAME)
 

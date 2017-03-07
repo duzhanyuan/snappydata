@@ -20,11 +20,12 @@ import java.sql.{Connection, ResultSet, Statement}
 
 import com.esotericsoftware.kryo.io.{Input, Output}
 import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
+import com.gemstone.gemfire.i18n.StringIdImpl
 import com.gemstone.gemfire.internal.cache.{LocalRegion, PartitionedRegion}
+import com.pivotal.gemfirexd.Attribute
 import com.pivotal.gemfirexd.internal.engine.distributed.utils.GemFireXDUtils
 import com.pivotal.gemfirexd.internal.engine.{GfxdConstants, Misc}
 import io.snappydata.impl.SparkShellRDDHelper
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.ConnectionPropertiesSerializer
 import org.apache.spark.sql.catalyst.InternalRow
@@ -35,8 +36,11 @@ import org.apache.spark.sql.execution.{BufferedRowIterator, RDDKryo, WholeStageC
 import org.apache.spark.sql.sources.{ConnectionProperties, Filter, JdbcExtendedUtils}
 import org.apache.spark.sql.store.{CodeGeneration, StoreUtils}
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{SnappySession, SparkSession}
+import org.apache.spark.sql.store.StoreUtils
+import org.apache.spark.sql.{SQLContext, SnappySession, SparkSession}
 import org.apache.spark.{Partition, TaskContext}
+
+import scala.collection.mutable
 
 /**
  * Column Store implementation for GemFireXD.
@@ -60,8 +64,13 @@ class JDBCSourceAsColumnarStore(_connProperties: ConnectionProperties,
     val snappySession = session.asInstanceOf[SnappySession]
     connectionType match {
       case ConnectionType.Embedded =>
+        val ss = session.asInstanceOf[SparkSession]
+        val sqlc = ss.sqlContext
+        val connProperties =
+          ExternalStoreUtils.validateAndGetAllProps(Some(sqlc),
+            mutable.Map.empty[String, String])
         new ColumnarStorePartitionedRDD(snappySession,
-          tableName, this).asInstanceOf[RDD[ColumnBatch]]
+          tableName, this, connProperties).asInstanceOf[RDD[ColumnBatch]]
       case _ =>
         // remove the url property from poolProps since that will be
         // partition-specific
@@ -187,11 +196,18 @@ class JDBCSourceAsColumnarStore(_connProperties: ConnectionProperties,
 final class ColumnarStorePartitionedRDD(
     @transient private val session: SnappySession,
     private var tableName: String,
-    @transient private val store: JDBCSourceAsColumnarStore)
+    @transient private val store: JDBCSourceAsColumnarStore,
+    var connProps: ConnectionProperties)
     extends RDDKryo[Any](session.sparkContext, Nil) with KryoSerializable {
 
   override def compute(part: Partition, context: TaskContext): Iterator[Any] = {
     val container = GemFireXDUtils.getGemFireContainer(tableName, true)
+
+    val uname = connProps.connProps.getProperty(Attribute.USERNAME_ATTR)
+    val pass = connProps.connProps.getProperty(Attribute.PASSWORD_ATTR)
+    Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS ColumnarStorePartitionedRDD " +
+        s"$tableName, $uname, $pass")
+    val conn = ExternalStoreUtils.getConnection(tableName, connProps, forExecutor = true)
     val bucketIds = part match {
       case p: MultiBucketExecutorPartition => p.buckets
       case _ => java.util.Collections.singleton(Int.box(part.index))
@@ -216,11 +232,13 @@ final class ColumnarStorePartitionedRDD(
   override def write(kryo: Kryo, output: Output): Unit = {
     super.write(kryo, output)
     output.writeString(tableName)
+    ConnectionPropertiesSerializer.write(kryo, output, connProps)
   }
 
   override def read(kryo: Kryo, input: Input): Unit = {
     super.read(kryo, input)
     tableName = input.readString()
+    connProps = ConnectionPropertiesSerializer.read(kryo, input)
   }
 }
 

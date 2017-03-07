@@ -130,6 +130,10 @@ class LeadImpl extends ServerImpl with Lead
       conf.set("spark.ui.port",
         bootProperties.getProperty("spark.ui.port", LeadImpl.SPARKUI_PORT.toString))
 
+      println(s" ${Thread.currentThread().getName} ABS passing below props to start " +
+          s"SparkContext/lead")
+      conf.getAll.foreach({ case (k, v) => println(s"conf key $k, value $v")})
+
       if (bootProperties.getProperty(Constant.ENABLE_ZEPPELIN_INTERPRETER,
         "false").equalsIgnoreCase("true")) {
 

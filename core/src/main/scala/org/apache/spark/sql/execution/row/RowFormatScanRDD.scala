@@ -20,19 +20,22 @@ import java.lang.reflect.Field
 import java.sql.{Connection, ResultSet, Statement}
 import java.util.GregorianCalendar
 
-import scala.collection.mutable.ArrayBuffer
+import com.gemstone.gemfire.i18n.StringIdImpl
+import com.gemstone.gemfire.internal.i18n.LocalizedStrings
+import com.gemstone.gemfire.internal.i18n.ParentLocalizedStrings
 
+import scala.collection.mutable.ArrayBuffer
 import com.esotericsoftware.kryo.io.{Input, Output}
 import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
 import com.gemstone.gemfire.internal.cache.{CacheDistributionAdvisee, NonLocalRegionEntry, PartitionedRegion}
 import com.gemstone.gemfire.internal.shared.ClientSharedData
+import com.pivotal.gemfirexd.Attribute
 import com.pivotal.gemfirexd.internal.engine.Misc
 import com.pivotal.gemfirexd.internal.engine.distributed.utils.GemFireXDUtils
 import com.pivotal.gemfirexd.internal.engine.store.{AbstractCompactExecRow, GemFireContainer, RegionEntryUtils}
 import com.pivotal.gemfirexd.internal.iapi.types.RowLocation
 import com.pivotal.gemfirexd.internal.impl.jdbc.EmbedResultSet
 import com.zaxxer.hikari.pool.ProxyResultSet
-
 import org.apache.spark.serializer.ConnectionPropertiesSerializer
 import org.apache.spark.sql.SnappySession
 import org.apache.spark.sql.collection.MultiBucketExecutorPartition
@@ -167,6 +170,10 @@ class RowFormatScanRDD(@transient val session: SnappySession,
 
   def computeResultSet(
       thePart: Partition): (Connection, Statement, ResultSet) = {
+    val uname = connProperties.connProps.getProperty(Attribute.USERNAME_ATTR)
+    val pass = connProperties.connProps.getProperty(Attribute.PASSWORD_ATTR)
+    Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS RowFormatScanRDD $tableName, $uname, " +
+        pass)
     val conn = ExternalStoreUtils.getConnection(tableName,
       connProperties, forExecutor = true)
 
@@ -215,6 +222,7 @@ class RowFormatScanRDD(@transient val session: SnappySession,
   override def compute(thePart: Partition,
       context: TaskContext): Iterator[Any] = {
     if (pushProjections || useResultSet) {
+      Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, "ABS RFS 1")
       val (conn, stmt, rs) = computeResultSet(thePart)
       new ResultSetTraversal(conn, stmt, rs, context)
     } else {
@@ -222,6 +230,7 @@ class RowFormatScanRDD(@transient val session: SnappySession,
       // higher layer PartitionedPhysicalRDD will take care of conversion
       // or direct code generation as appropriate
       if (isPartitioned && filterWhereClause.isEmpty) {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, "ABS RFS 2")
         val container = GemFireXDUtils.getGemFireContainer(tableName, true)
         val bucketIds = thePart match {
           case p: MultiBucketExecutorPartition => p.buckets
@@ -229,6 +238,7 @@ class RowFormatScanRDD(@transient val session: SnappySession,
         }
         new CompactExecRowIteratorOnScan(container, bucketIds)
       } else {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, "ABS RFS 3")
         val (conn, stmt, rs) = computeResultSet(thePart)
         val ers = rs match {
           case e: EmbedResultSet => e

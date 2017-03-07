@@ -99,6 +99,8 @@ abstract class SnappyDDLParser(session: SnappySession)
   final def WHEN: Rule0 = rule { keyword(Consts.WHEN) }
   final def WHERE: Rule0 = rule { keyword(Consts.WHERE) }
   final def WITH: Rule0 = rule { keyword(Consts.WITH) }
+  final def GRANT: Rule0 = rule { keyword(Consts.GRANT) }
+  final def REVOKE: Rule0 = rule { keyword(Consts.REVOKE) }
 
   // non-reserved keywords
   final def ANTI: Rule0 = rule { keyword(Consts.ANTI) }

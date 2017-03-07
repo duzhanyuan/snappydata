@@ -20,13 +20,15 @@ import java.sql.Connection
 import java.util.Properties
 import javax.sql.DataSource
 
+import com.gemstone.gemfire.i18n.StringIdImpl
+import com.pivotal.gemfirexd.Attribute
+import com.pivotal.gemfirexd.internal.engine.Misc
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
 import com.zaxxer.hikari.util.PropertyElf
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource => HDataSource}
-import org.apache.tomcat.jdbc.pool.{DataSource => TDataSource, PoolProperties}
-
+import org.apache.tomcat.jdbc.pool.{PoolProperties, DataSource => TDataSource}
 import org.apache.spark.sql.jdbc.JdbcDialect
 import org.apache.spark.sql.row.{GemFireXDClientDialect, GemFireXDDialect}
 
@@ -45,12 +47,15 @@ object ConnectionPool {
   private[this] type PoolKey = (Properties, Properties, Boolean)
 
   /**
-   * Map of ID to corresponding pool DataSources. Using Java's
+   * Map of (ID, username) to corresponding pool DataSources. Using Java's
    * ConcurrentHashMap for lock-free reads. No concurrency required
    * only lock-free reads so keeping it at minimum.
    */
   private[this] val idToPoolMap = new java.util.concurrent.ConcurrentHashMap[
-      String, (DataSource, PoolKey)](8, 0.75f, 1)
+      (String, String), (DataSource, PoolKey)](8, 0.75f, 1)
+
+  private[this] val idToUsersMap = new java.util.concurrent.ConcurrentHashMap[
+      String, mutable.Set[String]](8, 0.75f, 1)
 
   /**
    * Reference counted pools which will share a pool across IDs
@@ -80,15 +85,22 @@ object ConnectionPool {
   def getPoolDataSource(id: String, props: Map[String, String],
       connectionProps: Properties, hikariCP: Boolean): DataSource = {
     // fast lock-free path first (the usual case)
-    val dsKey = idToPoolMap.get(id)
+    val username = connectionProps.getProperty(Attribute.USERNAME_ATTR, "")
+    val dsKey = idToPoolMap.get(id, username)
     if (dsKey != null) {
+      Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS datasource exists for ($id, " +
+          s"$username)")
       dsKey._1
     } else pools.synchronized {
       // double check after the global lock
-      val dsKey = idToPoolMap.get(id)
+      val dsKey = idToPoolMap.get(id, username)
       if (dsKey != null) {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS datasource exists for ($id, " +
+            s"$username)")
         dsKey._1
       } else {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS datasource does not exist for " +
+            s"($id, $username)")
         // search if there is already an existing pool with same properties
         val poolProps = new Properties()
         for ((k, v) <- props) poolProps.setProperty(k, v)
@@ -96,8 +108,9 @@ object ConnectionPool {
         pools.get(poolKey) match {
           case Some((newDS, ids)) =>
             ids += id
-            val err = idToPoolMap.putIfAbsent(id, (newDS, poolKey))
+            val err = idToPoolMap.putIfAbsent((id, username), (newDS, poolKey))
             require(err == null, s"unexpected existing pool for $id: $err")
+            updateIdToUsersMap(id, username)
             newDS
           case None =>
             // create new pool
@@ -116,11 +129,22 @@ object ConnectionPool {
               new TDataSource(tconf)
             }
             pools(poolKey) = (newDS, mutable.Set(id))
-            val err = idToPoolMap.putIfAbsent(id, (newDS, poolKey))
+            val err = idToPoolMap.putIfAbsent((id, username), (newDS, poolKey))
+            updateIdToUsersMap(id, username)
             require(err == null, s"unexpected existing pool for $id: $err")
             newDS
         }
       }
+    }
+  }
+
+  private def updateIdToUsersMap(id: String, username: String): Unit = {
+    idToUsersMap.get(id) match {
+      case users: mutable.Set[String] =>
+        users += username
+      case _ =>
+        val err = idToUsersMap.putIfAbsent(id, mutable.Set(username))
+        require(err == null, s"unexpected existing user set for $id: $err")
     }
   }
 
@@ -134,7 +158,32 @@ object ConnectionPool {
       poolProps: Map[String, String], connProps: Properties,
       hikariCP: Boolean): Connection = {
     val ds = getPoolDataSource(id, poolProps, connProps, hikariCP)
-    val conn = ds.getConnection
+
+    val uname = connProps.getProperty(Attribute.USERNAME_ATTR, "")
+    val pass = connProps.getProperty(Attribute.PASSWORD_ATTR, "")
+    val conn = uname match {
+      case "" => {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS credentials not found by " +
+            s"connectionPool, isHikari? $hikariCP")
+        Thread.currentThread().getStackTrace.foreach(st => Misc.getI18NLogWriter.info
+        (StringIdImpl.LITERAL, s"  $st"))
+        ds.getConnection
+      }
+      case _ => {
+        Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS credentials found by " +
+            s"connectionPool $uname, $pass. isHikari? $hikariCP")
+        // Thread.currentThread().getStackTrace.foreach(st => Misc.getI18NLogWriter.info
+        // (StringIdImpl.LITERAL, s"  $st"))
+//        if (ds.isInstanceOf[TDataSource]) {
+//          ds.asInstanceOf[TDataSource].setAlternateUsernameAllowed(true)
+//          ds.getConnection(uname, pass)
+//        } else {
+          // TODO Hikari doesn't support getConnection(user, pass)
+          ds.getConnection
+//        }
+      }
+    }
+
     dialect match {
       case GemFireXDDialect | GemFireXDClientDialect =>
         conn.setTransactionIsolation(Connection.TRANSACTION_NONE)
@@ -169,18 +218,28 @@ object ConnectionPool {
    *         and false otherwise
    */
   def removePoolReference(id: String): Boolean = {
-    val dsKey = idToPoolMap.remove(id)
-    if (dsKey != null) pools.synchronized {
-      removePoolKey(id, dsKey)
-    } else false
+    val users = idToUsersMap.remove(id)
+    users.foreach {
+      case user => {
+        val dsKey = idToPoolMap.remove((id, user))
+        if (dsKey != null) pools.synchronized {
+          removePoolKey(id, dsKey)
+        } else false
+      }
+    }
+    false
   }
 
   /** To be invoked only on SparkContext stop. */
   private[sql] def clear(): Unit = pools.synchronized {
     idToPoolMap.asScala.foreach {
-      case (id, dsKey) => removePoolKey(id, dsKey)
+      case ((id, users), dsKey) => removePoolKey(id, dsKey)
     }
     pools.clear()
     idToPoolMap.clear()
+    idToUsersMap.asScala.foreach {
+      case (id, users) => users.clear()
+    }
+    idToUsersMap.clear()
   }
 }

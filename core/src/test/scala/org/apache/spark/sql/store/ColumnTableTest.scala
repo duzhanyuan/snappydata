@@ -150,8 +150,12 @@ class ColumnTableTest
 
     snc.sql(s"Drop Table if exists $schema.$table")
     snc.sql(s"Create Table $schema.$table (a INT, b INT, c INT) " +
-        "using column options()")
+        "using column options(buckets '3')")
 
+    val df0 = snc.sql(s"insert into $schema.$table values (1, 1, 1) ")
+    val df = snc.sql(s"Select * from $schema.$table")
+    df0.collect()
+    df.collect()
     // try different variant of set schema
     val size = dataDF.count().toInt
     var count = 0

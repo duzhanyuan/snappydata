@@ -336,8 +336,9 @@ final class DefaultSource extends MutableRelationProvider {
     val schemaExtension = s"$schema $ddlExtension"
     val preservePartitions = parameters.remove("preservepartitions")
     // val dependentRelations = parameters.remove(ExternalStoreUtils.DEPENDENT_RELATIONS)
-    val connProperties = ExternalStoreUtils.validateAndGetAllProps(
-      Some(sqlContext.sparkSession), parameters)
+    val sc = sqlContext.sparkContext
+    val connProperties =
+      ExternalStoreUtils.validateAndGetAllProps(Some(sqlContext), parameters)
 
     StoreUtils.validateConnProps(parameters)
     val tableName = SnappyStoreHiveCatalog.processTableIdentifier(table, sqlContext.conf)

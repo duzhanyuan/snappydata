@@ -639,8 +639,8 @@ final class DefaultSource extends ColumnarRelationProvider {
       parametersForShadowTable, isRowTable = false, isShadowTable = true)
 
     // val dependentRelations = parameters.remove(ExternalStoreUtils.DEPENDENT_RELATIONS)
-    val connProperties = ExternalStoreUtils.validateAndGetAllProps(
-      Some(sqlContext.sparkSession), parameters)
+    val connProperties =
+      ExternalStoreUtils.validateAndGetAllProps(Some(sqlContext), parameters)
 
     StoreUtils.validateConnProps(parameters)
 
@@ -702,7 +702,15 @@ final class DefaultSource extends ColumnarRelationProvider {
       }
       success = true
       relation
-    } finally {
+    } catch {
+      case t: Throwable =>
+        // scalastyle:off println
+        println(s"ABS CFR.createRelation: $t")
+        // scalastyle:on println
+        throw t
+      case _ => relation
+    }
+    finally {
       if (!success && !relation.tableExists) {
         if (!isRelationforSample) {
           val catalog = sqlContext.sparkSession.asInstanceOf[SnappySession].sessionCatalog

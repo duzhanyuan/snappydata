@@ -298,8 +298,10 @@ public class SnappyHiveCatalog implements ExternalCatalog {
       DriverRegistry.register("io.snappydata.jdbc.EmbeddedDriver");
       DriverRegistry.register("io.snappydata.jdbc.ClientDriver");
 
+      String pass = ";password=metastore"; // read it from DD when user sets it.
       String url = "jdbc:snappydata:;user=" +
           SnappyStoreHiveCatalog.HIVE_METASTORE() +
+          pass +
           ";disable-streaming=true;default-persistent=true";
       HiveConf metadataConf = new HiveConf();
       metadataConf.setVar(HiveConf.ConfVars.METASTORECONNECTURLKEY, url);

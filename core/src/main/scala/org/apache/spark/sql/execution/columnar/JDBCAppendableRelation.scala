@@ -20,9 +20,11 @@ import java.sql.Connection
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import scala.collection.mutable
-
 import _root_.io.snappydata.SnappyTableStatsProviderService
-
+import com.gemstone.gemfire.i18n.StringIdImpl
+import com.gemstone.gemfire.internal.i18n.LocalizedStrings
+import com.pivotal.gemfirexd.Attribute
+import com.pivotal.gemfirexd.internal.engine.Misc
 import org.apache.spark.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
@@ -223,25 +225,48 @@ case class JDBCAppendableRelation(
   def createTable(externalStore: ExternalStore, tableStr: String,
       tableName: String, dropIfExists: Boolean): Unit = {
 
-    externalStore.tryExecute(tableName,
-      conn => {
-        if (dropIfExists) {
-          JdbcExtendedUtils.dropTable(conn, tableName, dialect, sqlContext,
-            ifExists = true)
-        }
-        val tableExists = JdbcExtendedUtils.tableExists(tableName, conn,
-          dialect, sqlContext)
-        if (!tableExists) {
-          logInfo(s"Applying DDL (url=${connProperties.url}; " +
-              s"props=${connProperties.connProps}): $tableStr")
-          JdbcExtendedUtils.executeUpdate(tableStr, conn)
-          dialect match {
-            case d: JdbcExtendedDialect => d.initializeTable(tableName,
-              sqlContext.conf.caseSensitiveAnalysis, conn)
-            case _ => // do nothing
+    val oldUser = externalStore.connProperties.connProps.getProperty(Attribute.USERNAME_ATTR)
+    val oldPass = externalStore.connProperties.connProps.getProperty(Attribute.PASSWORD_ATTR)
+    try {
+      // Change username and password credentials to that of root user.
+      // TODO This assumes that this def creates the columnbatch table in internal schema.
+      externalStore.connProperties.connProps.setProperty(Attribute.USERNAME_ATTR,
+        SnappyStoreHiveCatalog.HIVE_METASTORE)
+      externalStore.connProperties.connProps.getProperty(Attribute.PASSWORD_ATTR, "metastore")
+      externalStore.connProperties.executorConnProps.setProperty(Attribute.USERNAME_ATTR,
+        SnappyStoreHiveCatalog.HIVE_METASTORE)
+      externalStore.connProperties.executorConnProps.getProperty(Attribute.PASSWORD_ATTR, "metastore")
+      Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS set root credentials for $tableName")
+
+      externalStore.tryExecute(tableName,
+        conn => {
+          if (dropIfExists) {
+            JdbcExtendedUtils.dropTable(conn, tableName, dialect, sqlContext,
+              ifExists = true)
           }
-        }
-      })
+          val tableExists = JdbcExtendedUtils.tableExists(tableName, conn,
+            dialect, sqlContext)
+          if (!tableExists) {
+            logInfo(s"Applying DDL (url=${connProperties.url}; " +
+                s"props=${connProperties.connProps}): $tableStr")
+            JdbcExtendedUtils.executeUpdate(tableStr, conn)
+            dialect match {
+              case d: JdbcExtendedDialect => d.initializeTable(tableName,
+                sqlContext.conf.caseSensitiveAnalysis, conn)
+              case _ => // do nothing
+            }
+          }
+        })
+    } finally {
+      externalStore.connProperties.connProps.setProperty(Attribute.USERNAME_ATTR,
+        oldUser)
+      externalStore.connProperties.connProps.getProperty(Attribute.PASSWORD_ATTR, oldPass)
+      externalStore.connProperties.executorConnProps.setProperty(Attribute.USERNAME_ATTR,
+        oldUser)
+      externalStore.connProperties.executorConnProps.getProperty(Attribute.PASSWORD_ATTR, oldPass)
+      Misc.getI18NLogWriter.info(StringIdImpl.LITERAL, s"ABS removed root credentials for "
+           + tableName)
+    }
   }
 
   /**
@@ -293,8 +318,8 @@ class ColumnarRelationProvider extends SchemaRelationProvider
     val table = ExternalStoreUtils.removeInternalProps(parameters)
     val sc = sqlContext.sparkContext
 
-    val connectionProperties = ExternalStoreUtils.validateAndGetAllProps(
-      Some(sqlContext.sparkSession), parameters)
+    val connectionProperties =
+      ExternalStoreUtils.validateAndGetAllProps(Some(sqlContext), parameters)
 
     val partitions = ExternalStoreUtils.getAndSetTotalPartitions(
       Some(sc), parameters, forManagedTable = false)

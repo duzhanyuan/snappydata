@@ -17,7 +17,9 @@
 package org.apache.spark.sql.execution.columnar.impl
 
 import java.lang
-import java.util.{Collections, UUID}
+import java.util.{Properties, Collections, UUID}
+
+import com.pivotal.gemfirexd.Attribute
 
 import scala.collection.JavaConverters._
 
@@ -175,6 +177,12 @@ object StoreCallbacksImpl extends StoreCallbacks with Logging with Serializable 
     } else {
       -1
     }
+  }
+
+  override def skipAuthForHiveMetaStore(userInfo: Properties): Boolean = {
+    // TODO Anyone with this user name can bypass the auth. set another flag and doublecheck?
+    SnappyStoreHiveCatalog.HIVE_METASTORE.equalsIgnoreCase(userInfo.getProperty(Attribute
+        .USERNAME_ATTR))
   }
 }
 
