@@ -7,13 +7,16 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Vector;
 
 import com.gemstone.gemfire.cache.query.Struct;
 import com.gemstone.gemfire.cache.query.internal.types.StructTypeImpl;
 import hydra.HydraVector;
 import hydra.Log;
+import hydra.Prms;
 import hydra.TestConfig;
 import io.snappydata.hydra.cluster.SnappyTest;
 import sql.SQLHelper;
@@ -25,6 +28,11 @@ import util.TestHelper;
 public class JDBCClientTesting extends SnappyTest {
 
   protected static JDBCClientTesting testInstance;
+
+  public static void HydraTask_initialize() {
+    if (testInstance == null)
+      testInstance = new JDBCClientTesting();
+  }
 
   public static void HydraTask_createSnappySchemas() {
     testInstance.createSnappySchemas();
@@ -77,7 +85,10 @@ public class JDBCClientTesting extends SnappyTest {
       Log.getLogWriter().info("creating tables in snappy.");
       createTables(conn);
       Log.getLogWriter().info("done creating tables in snappy, now loading the data.");
+      runGemXDQuery = true;
+      conn = getClientConnection();
       loadTables(conn);
+      runGemXDQuery = false;
       closeConnection(conn);
 
     } catch (SQLException se) {
@@ -119,18 +130,16 @@ public class JDBCClientTesting extends SnappyTest {
       String csvFilePath = dataLocation + File.separator + csvFileNames[i];
       Log.getLogWriter().info("CSV location is : " + csvFilePath);
       try {
-        PreparedStatement ps = conn.prepareStatement("CALL SYSCS_UTIL.SYSCS_IMPORT_TABLE(?,?,?,?,?,?,?)");
+        PreparedStatement ps = conn.prepareStatement(
+            "CALL SYSCS_UTIL.IMPORT_TABLE_EX(?,?,?,null,null,null,0,0,6,0,null,null)");
         ps.setString(1, table[0]);
         ps.setString(2, table[1]);
         ps.setString(3, csvFilePath);
-        ps.setString(4, ",");
-        ps.setString(5,null);
-        ps.setString(6, null);
-        ps.setInt(7, 0);
+        //ps.setString(4, ",");
         ps.execute();
         Log.getLogWriter().info("Loaded data into " + tableNames[i]);
       } catch (SQLException se) {
-        throw new TestException("Exception while loading data to derby table.Exception is " + se
+        throw new TestException("Exception while loading data into table.Exception is " + se
             .getSQLState() + " : " + se.getMessage());
       }
     }
@@ -171,14 +180,16 @@ Hydra task to execute select queries
     try {
       Connection conn = getLocatorConnection();
       Connection dConn = null;
-      String query = SnappySchemaPrms.getSelectStmts();
+      String selectStmt[] = SnappySchemaPrms.getSelectStmts();
       ResultSet snappyRS;
+      int rand = new Random().nextInt(selectStmt.length);
+      String query = selectStmt[rand];
       Log.getLogWriter().info("Executing " + query + " on snappy.");
       try {
         snappyRS = conn.createStatement().executeQuery(query);
         Log.getLogWriter().info("Executed query on snappy.");
       } catch(SQLException se){
-        if(se.getSQLState().equals("21000")){
+        if(se.getSQLState().equals("21000") || se.getSQLState().equals("0A000") ){
           //retry select query with routing
           Log.getLogWriter().info("Got exception while executing select query, retrying with " +
               "executionEngine as spark.");
@@ -187,6 +198,9 @@ Hydra task to execute select queries
           Log.getLogWriter().info("Executed query on snappy.");
         }else throw new SQLException(se);
       }
+      int numRows =0 ;
+      while(snappyRS.next()) numRows++;
+      Log.getLogWriter().info("Num rows in resultSet is:" + numRows);
       StructTypeImpl snappySti = ResultSetHelper.getStructType(snappyRS);
       List<Struct> snappyList = ResultSetHelper.asList(snappyRS, snappySti, false);
       snappyRS.close();
@@ -214,7 +228,9 @@ Hydra task to execute select queries
         String selectStmt = stmt + table;
         Log.getLogWriter().info("Verifying results for " + table + " using " + selectStmt);
         ResultSet snappyRS = conn.createStatement().executeQuery(stmt + table);
-        Log.getLogWriter().info("Num rows in resultSet is:" );
+        int numRows = 0 ;
+        while(snappyRS.next()) numRows++;
+        Log.getLogWriter().info("Num rows in resultSet is:" + numRows);
 
       }
     }catch(SQLException se){

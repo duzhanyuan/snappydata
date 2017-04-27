@@ -92,7 +92,7 @@ public class SnappyTest implements Serializable {
     private static Boolean doneCopying = false;
     private static Boolean doneRestore = false;
     private static Boolean diskDirExists = false;
-    private static Boolean runGemXDQuery = false;
+    protected static Boolean runGemXDQuery = false;
     protected static int[] dmlTables = SQLPrms.getTables();
     public static final Random random = new Random(SQLPrms.getRandSeed());
     protected static DMLStmtsFactory dmlFactory = new DMLStmtsFactory();

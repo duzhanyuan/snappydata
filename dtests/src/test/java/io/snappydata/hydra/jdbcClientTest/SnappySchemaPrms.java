@@ -54,9 +54,14 @@ public class SnappySchemaPrms extends SnappyPrms {
     return TestConfig.tasktab().stringAt(key, TestConfig.tab().stringAt(key, null));
   }
 
-  public static String getSelectStmts(){
+  public static String[] getSelectStmts(){
     Long key = selectStmts;
-    return BasePrms.tasktab().stringAt(key, BasePrms.tab().stringAt(key, null));
+    Vector selectStmt =  BasePrms.tasktab().vecAt(key, BasePrms.tab().vecAt(key, null));
+    String[] strArr = new String[selectStmt.size()];
+    for (int i = 0; i < selectStmt.size(); i++) {
+      strArr[i] = (String)selectStmt.elementAt(i);
+    }
+    return strArr;
   }
 
   static {
